@@ -1,17 +1,17 @@
-﻿#include <cmath>		/* log2() */
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#include <chrono>
+#include <cmath>		/* log2() */
 #include <cstdint> 		/* int64_t, uint64_t */
 #include <cstdlib>		/* srand(), rand() */
 #include <ctime>		/* time() */
 #include <iostream> 		/* std::cout, std::endl */
+#include <time.h>
+#include <stdlib.h>
+#include "utils.h" 	//INCLUDE HEADER FILE
+#include "ntt.h"
 
-#include "C:\Users\macad\source\repos\CUDA_NTT_v5_8\Header\ntt.h" 	//INCLUDE HEADER FILE
-#include "C:\Users\macad\source\repos\CUDA_NTT_v5_8\Header\utils.h" 	//INCLUDE HEADER FILE
-
-#include <C:\Users\macad\source\repos\CUDA_NTT_v5_8\Header\helper_functions.h>
-#include <C:\Users\macad\source\repos\CUDA_NTT_v5_8\Header\helper_cuda.h>
-#include <C:\Users\macad\source\repos\CUDA_NTT_v5_8\Header\cuda_runtime.h>
-
-
+using namespace std;
 /**
  * Return vector with each element of the input at its bit-reversed position
  *
@@ -19,7 +19,7 @@
  * @param n   The length of the vector, must be a power of two
  * @return    The bit reversed vector
  */
-uint64_t* bit_reverse(uint64_t* vec, uint64_t n) {
+__host__ __device__ uint64_t* bit_reverse(uint64_t* vec, uint64_t n) {
 
 	uint64_t num_bits = log2(n);
 
@@ -84,7 +84,7 @@ bool compVec(uint64_t* vec1, uint64_t* vec2, uint64_t n, bool debug) {
  * @param m	The modulus of the expression
  * @return 	The result of the expression
  */
-uint64_t modExp(uint64_t base, uint64_t exp, uint64_t m) {
+__host__ __device__ uint64_t modExp(uint64_t base, uint64_t exp, uint64_t m) {
 
 	uint64_t result = 1;
 
@@ -110,7 +110,7 @@ uint64_t modExp(uint64_t base, uint64_t exp, uint64_t m) {
  * @param m	The modulus of the expression
  * @return 	The result of the expression
  */
-uint64_t modulo(int64_t base, int64_t m) {
+__host__ __device__ uint64_t modulo(int64_t base, int64_t m) {
 	int64_t result = base % m;
 
 	return (result >= 0) ? result : result + m;
@@ -122,26 +122,30 @@ uint64_t modulo(int64_t base, int64_t m) {
  * @param vec	The array to be displayed
  * @param n	The length of the array
  */
-void printVec(uint64_t* vec, uint64_t n) {
 
-	std::cout << "[";
-	for (uint64_t i = 0; i < n; i++) {
+ //void printVec(uint64_t* vec, uint64_t n) {
+ //
+ //	std::cout << "[";
+ //
+ //	for (uint64_t i = 0; i < n; i++) {
+ //
+ //		std::cout << vec[i] << ",";
+ //
+ //	}
+ //
+ //	std::cout << "]" << std::endl;
+ //}
 
-		std::cout << vec[i] << ",";
-
-	}
-	std::cout << "]" << std::endl;
-}
-
-/**
- * Generate an array of arbitrary length containing random positive integers
- *
- * @param n	The length of the array
- * @param max	The maximum value for an array element [Default: RAND_MAX]
- */
-uint64_t* randVec(uint64_t n, uint64_t max) {
+ /**
+  * Generate an array of arbitrary length containing random positive integers
+  *
+  * @param n	The length of the array
+  * @param max	The maximum value for an array element [Default: RAND_MAX]
+  */
+__host__ __device__ uint64_t* randVec(uint64_t n, uint64_t max) {
 
 	uint64_t* vec;
+
 	vec = (uint64_t*)malloc(n * sizeof(uint64_t));
 
 	srand(time(0));
@@ -154,14 +158,7 @@ uint64_t* randVec(uint64_t n, uint64_t max) {
 	return vec;
 }
 
-
-
-
-
-
-
-
-//NTT.CPP code
+//NTT.cpp Code
 
 /**
  * Perform an in-place iterative breadth-first decimation-in-time Cooley-Tukey NTT on an input vector and return the result
@@ -173,30 +170,24 @@ uint64_t* randVec(uint64_t n, uint64_t max) {
  * @param rev	Whether to perform bit reversal on the input vector
  * @return 	The transformed vector
  */
+__global__ void kernelNTT_DIT(uint64_t* result, uint64_t* vec, uint64_t n, uint64_t p, uint64_t r, uint64_t* mpow, uint64_t* akp, uint64_t logged, bool rev) {
+	/*int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int k = blockIdx.y * blockDim.y + threadIdx.y;*/
 
-
-
-
-uint64_t* inPlaceNTT_DIT(uint64_t* vec, uint64_t n, uint64_t p, uint64_t r, bool rev) {
-
-	uint64_t* result;
 	uint64_t m, k_, a, factor1, factor2;
-
-	result = (uint64_t*)malloc(n * sizeof(uint64_t));
-
-	if (rev) {
-		result = bit_reverse(vec, n);
-	}
-	else {
-		for (uint64_t i = 0; i < n; i++) {
-			result[i] = vec[i];
-		}
-	}
+	//if (rev) {
+	//	result = bit_reverse(vec, n);
+	//}
+	//else {
+	//	for (uint64_t i = 0; i < n; i++) {
+	//		result[i] = vec[i];
+	//	}
+	//}
 
 
-	for (uint64_t i = 1; i <= log2(n); i++) {
+	for (uint64_t i = 1; i <= logged; i++) {
 
-		m = pow(2, i);
+		m = mpow[i - 1];
 
 		k_ = (p - 1) / m;
 		a = modExp(r, k_, p);
@@ -206,39 +197,103 @@ uint64_t* inPlaceNTT_DIT(uint64_t* vec, uint64_t n, uint64_t p, uint64_t r, bool
 			for (uint64_t k = 0; k < m / 2; k++) {
 
 				factor1 = result[j + k];
-				factor2 = modulo(modExp(a, k, p) * result[j + k + m / 2], p);
+				factor2 = modulo(akp[(i-1)*m/2+k] * result[j + k + m / 2], p);
 
 				result[j + k] = modulo(factor1 + factor2, p);
 				result[j + k + m / 2] = modulo(factor1 - factor2, p);
+
 
 			}
 		}
 
 	}
+	return;
+}
 
-	return result;
+void cudahelp(uint64_t* result, uint64_t* vec, uint64_t n, uint64_t p, uint64_t r, uint64_t* mpow, uint64_t* akp, int logged, bool rev)
+{
+
+
+	uint64_t* dev_a = nullptr;
+	uint64_t* dev_c = nullptr;
+	uint64_t* dev_mpow = nullptr;
+	uint64_t* dev_akp = nullptr;
+
+	cudaMalloc((void**)&dev_mpow, logged * sizeof(uint64_t));
+	cudaMalloc((void**)&dev_c, n * sizeof(uint64_t));
+	cudaMalloc((void**)&dev_a, n * sizeof(uint64_t));
+	cudaMalloc((void**)&dev_akp, 12*2048 * sizeof(uint64_t));
+
+	cudaMemcpy(dev_mpow, mpow, logged * sizeof(uint64_t), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_a, vec, n * sizeof(uint64_t), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_c, result, n * sizeof(uint64_t), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_akp, akp, 12*2048 * sizeof(uint64_t), cudaMemcpyHostToDevice);
+
+
+	//dim3 block(32,32);
+	kernelNTT_DIT << <1, 1 >> > (dev_c, dev_a, n, p, r, dev_mpow,dev_akp, logged, false);
+	cudaDeviceSynchronize();
+
+	cudaMemcpy(result, dev_c, n * sizeof(uint64_t), cudaMemcpyDeviceToHost);
+
+	cudaFree(dev_c);
+	cudaFree(dev_a);
+	cudaFree(dev_mpow);
 
 }
-using namespace std;
+
+//MAIN.cpp
+
+
 
 int main(int argc, char* argv[]) {
-	clock_t t;
-	t = clock();
+	using std::chrono::high_resolution_clock;
+	using std::chrono::duration_cast;
+	using std::chrono::duration;
+	using std::chrono::milliseconds;
+
+	auto t1 = high_resolution_clock::now();
+
 	const uint64_t n = 4096;
 	uint64_t p = 68719403009;
 	uint64_t r = 36048964756;
 
+	const int logged = log2(n);
+
 	uint64_t vec[n];
+	uint64_t* result;
 
 	for (int i = 0; i < n; i++) {
 		vec[i] = i;
 	}
 
-	uint64_t* outVec = inPlaceNTT_DIT(vec, n, p, r);
+	uint64_t mpow[12];
+	uint64_t k_, a;
+	uint64_t akp[12*2048];
 
-	printVec(outVec, n);
-	t = clock() - t;
-	printf("It took me %d clicks (%f seconds).\n", t, ((float)t) / CLOCKS_PER_SEC);
+	for (uint64_t i = 1; i <= 12; i++) {
+
+		mpow[i - 1] = pow(2, i);
+		k_ = (p - 1) / mpow[i - 1];
+		a = modExp(r, k_, p);
+		for (uint64_t k = 0; k < mpow[i - 1] / 2; k++) {
+			akp[(i-1)* mpow[i - 1]/2 +k] = modExp(a, k, p);
+		}
+	}
+	result = bit_reverse(vec, n);
+	cudahelp(result, vec, n, p, r, mpow,akp, logged, false);
+
+	auto t2 = high_resolution_clock::now();
+	duration<double, std::milli> ms_double = t2 - t1;
+
+	std::cout << "[";
+	for (uint64_t i = 0; i < n; i++) {
+
+		std::cout << result[i] << ",";
+
+	}
+	std::cout << "]" << std::endl;
+
+	std::cout << ms_double.count() << "ms";
 	return 0;
-
 }
